@@ -78,18 +78,7 @@
 
     <section class="card">
       <div class="content">
-        <div class="row">
-          <div>
-            <div class="stat"><span class="muted">Participants</span><b id="nCount">0</b></div>
-            <div class="stat"><span class="muted">Distinct birthdays</span><b id="distinctCount">0</b></div>
-            <div class="stat"><span class="muted">At least one match (theory)</span><b id="pTheory">–</b></div>
-            <div class="stat"><span class="muted">At least one match (observed)</span><b id="pObserved">–</b></div>
-            <div style="margin-top:8px"><span class="pill" id="statusPill">Connecting…</span></div>
-          </div>
-          <div>
-            <canvas id="bar"></canvas>
-          </div>
-        </div>
+        
       </div>
     </section>
 
@@ -107,11 +96,13 @@
   </main>
 
   <!-- Supabase JS SDK -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- Chart.js for quick plotting -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@<div style="margin-top:8px"><span class="pill" id="statusPill">Connecting…</span></div>
+            <div style="margin-top:12px">
+              <h4 style="margin:8px 0 6px">Top matches</h4>
+              <div id="dupList" class="muted">No duplicates yet.</div>
+            </div>.net/npm/chart.js@4"></script>
   <script>
-    // ==== 1) CONFIGURE THESE WITH YOUR SUPABASE PROJECT INFO ====
+    <canvas id="probLine"></canvas> WITH YOUR SUPABASE PROJECT INFO ====
     const SUPABASE_URL = "https://fqvnxcnyrfuwuamvnoev.supabase.co"; // <-- replace
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxdm54Y255cmZ1d3VhbXZub2V2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MjEwMTAsImV4cCI6MjA3NTM5NzAxMH0.tBBkQpo-1sg3NuJPwrJdTJGNQFBx0QlWmi4rboA1pK8";                       // <-- replace
 
@@ -170,25 +161,23 @@
     function theoreticalAtLeastOneMatch(n, days=365){
       if (n <= 1) return 0;
       let pNoMatch = 1;
-      for (let i=0; i<n; i++) pNoMatch *= (days - i)/days;
-      return 1 - pNoMatch;
+      for (let i=0; i<// ==== 4) CHART: running theoretical probability line ====
+    const probCtx = document.getElementById('probLine').getContext('2d');
+    const lineChart = new Chart(probCtx, {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'P(at least one match)', data: [] }] },
+      options: { responsive: true, animation: false, scales: { y: { beginAtZero: true, max: 1 } } }
+    });
+
+    function updateProbLine(n){
+      const labels = Array.from({length: n}, (_,i)=> i+1);
+      const data = labels.map(k => theoreticalAtLeastOneMatch(k));
+      lineChart.data.labels = labels;
+      lineChart.data.datasets[0].data = data;
+      lineChart.update();
     }
 
-    function computeCounts(rows){
-      const counts = new Map();
-      rows.forEach(r => counts.set(r.dm, (counts.get(r.dm)||0) + 1));
-      return counts;
-    }
-
-    function updateUI(rows){
-      const n = rows.length;
-      nCountEl.textContent = n;
-
-      const counts = computeCounts(rows);
-      distinctCountEl.textContent = counts.size;
-
-      // Observed: did we get any duplicate?
-      const anyDup = Array.from(counts.values()).some(c => c > 1);
+    function dmToMonth(dm){ return parseInt(dm.split('/')[1],10); }some(c => c > 1);
       pObservedEl.textContent = anyDup ? 'Yes' : 'No';
 
       // Theory
@@ -210,12 +199,17 @@
         .forEach((r, idx) => {
           const tr = document.createElement('tr');
           if ((counts.get(r.dm) || 0) > 1) tr.classList.add('dup');
-          tr.innerHTML = `<td>${idx+1}</td><td><b>${r.dm}</b></td><td>${r.nickname?escapeHtml(r.nickname):''}</td><td>${new Date(r.created_at).toLocaleTimeString()}</td><td>${counts.get(r.dm)||1}</td>`;
-          tableBody.appendChild(tr);
-        });
-    }
+          tr.innerHTML = `<td>${idx+1}</td><td><b>${r.dm}</b></td><td>${r.nickname?escapeHtml(r.nickname):''}</td><td>${new Date(r.c// Update running probability line
+      updateProbLine(n);
 
-    function escapeHtml(s){ return s?.replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])) || ''; }
+      // Top duplicates list
+      const dupListEl = document.getElementById('dupList');
+      const dups = Array.from(counts.entries()).filter(([,c]) => c >= 2).sort((a,b)=> b[1]-a[1]);
+      if (dups.length === 0) {
+        dupListEl.textContent = 'No duplicates yet.';
+      } else {
+        dupListEl.innerHTML = dups.map(([dm,c]) => `<div><b>${dm}</b> — ${c} students</div>`).join('');
+      }| ''; }
 
     // ==== 6) LOAD + LIVE SUBSCRIPTION ====
     async function loadAll(){
@@ -248,6 +242,7 @@
         const { error } = await supabase.from('birthdays').insert({ dm, nickname, client_id: clientId });
         if (error) throw error;
         statusPill.textContent = 'Submitted!';
+        await loadAll(); // ensure UI updates even if Realtime isn't enabled
         form.reset();
       } catch (err){
         console.error(err);
