@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Birthday Problem – Class Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --maxw: 980px; }
+    * { box-sizing: border-box; }
+    body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; margin: 0; background:#0b1020; color:#eef2ff; }
+    header { max-width: var(--maxw); margin: 32px auto 16px; padding: 0 16px; }
+    h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: 0.3px; }
+    p.sub { margin: 0; opacity: .8; }
+
+    main { max-width: var(--maxw); margin: 16px auto 40px; padding: 0 16px; display: grid; grid-template-columns: 1fr; gap: 16px; }
+
+    .card { background: #121a36; border: 1px solid #1e2b57; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    .card .content { padding: 18px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 760px) { .row { grid-template-columns: 1fr; } }
+
+    label { display: block; font-weight: 600; margin-bottom: 8px; }
+    select, input[type="text"] { width: 100%; padding: 10px 12px; background:#0f1630; border: 1px solid #2a3b7a; color:#e8edff; border-radius: 10px; font-size: 16px; }
+    button { cursor: pointer; padding: 12px 14px; border-radius: 12px; border: 1px solid #2a3b7a; background: linear-gradient(180deg,#1b2a5b,#12204a); color:#e8edff; font-weight: 700; width: 100%; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+
+    .flex { display:flex; gap:12px; align-items:center; }
+    .muted { opacity: .75; }
+    .stat { display:grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+    .stat b { font-size: 20px; }
+    .pill { display:inline-block; padding:4px 10px; border:1px solid #334aa3; background:#0f1736; border-radius:999px; font-size:12px; }
+
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid #1e2b57; text-align:left; }
+    tr.dup td { background: #2b1a37; }
+
+    .foot { opacity:.7; font-size: 12px; margin-top:8px; }
+    canvas { width:100% !important; height: 420px !important; }
+    .hide { display:none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Birthday Problem – Live Class Tally</h1>
+    <p class="sub">Each student selects <b>day</b> and <b>month</b>. We tally duplicates in real time and compare with the theoretical probability.</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <div class="content">
+        <form id="submitForm">
+          <div class="row">
+            <div>
+              <label for="day">Day</label>
+              <select id="day" required></select>
+            </div>
+            <div>
+              <label for="month">Month</label>
+              <select id="month" required></select>
+            </div>
+          </div>
+          <div style="margin-top:12px" class="row">
+            <div>
+              <label for="name">Nickname (optional)</label>
+              <input type="text" id="name" placeholder="e.g., Ali, Ece…" maxlength="32" />
+            </div>
+            <div class="flex" style="align-items:flex-end">
+              <button id="submitBtn" type="submit">Submit my birthday</button>
+            </div>
+          </div>
+          <p class="foot">We record only day/month (no year). To avoid duplicate submissions, this page stores a random token in your browser.</p>
+        </form>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="content">
+        <div class="row">
+          <div>
+            <div class="stat"><span class="muted">Participants</span><b id="nCount">0</b></div>
+            <div class="stat"><span class="muted">Distinct birthdays</span><b id="distinctCount">0</b></div>
+            <div class="stat"><span class="muted">At least one match (theory)</span><b id="pTheory">–</b></div>
+            <div class="stat"><span class="muted">At least one match (observed)</span><b id="pObserved">–</b></div>
+            <div style="margin-top:8px"><span class="pill" id="statusPill">Connecting…</span></div>
+          </div>
+          <div>
+            <canvas id="bar"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="content">
+        <h3 style="margin-top:0">All submissions</h3>
+        <table id="table">
+          <thead>
+            <tr><th>#</th><th>Birthday (dd/mm)</th><th>Nickname</th><th>Time</th><th>Count</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- Supabase JS SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Chart.js for quick plotting -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script>
+    // ==== 1) CONFIGURE THESE WITH YOUR SUPABASE PROJECT INFO ====
+    const SUPABASE_URL = "https://fqvnxcnyrfuwuamvnoev.supabase.co"; // <-- replace
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxdm54Y255cmZ1d3VhbXZub2V2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MjEwMTAsImV4cCI6MjA3NTM5NzAxMH0.tBBkQpo-1sg3NuJPwrJdTJGNQFBx0QlWmi4rboA1pK8";                       // <-- replace
+
+    // ==== 2) DATA MODEL (Supabase) ====
+    // Create a table named `birthdays` with columns:
+    //   id: uuid primary key default gen_random_uuid()
+    //   dm: text not null             -- formatted as 'dd/mm'
+    //   nickname: text                -- optional
+    //   created_at: timestamp default now()
+    //   client_id: text               -- for simple dedup per browser (optional)
+    // Enable RLS and add policies to allow anon read & insert:
+    //   1) For SELECT: using (true)
+    //   2) For INSERT: with check (true)
+
+    // ==== 3) APP STATE ====
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const clientIdKey = 'birthday-client-id-v1';
+    const clientId = window.localStorage.getItem(clientIdKey) || (()=>{const t=crypto.randomUUID(); localStorage.setItem(clientIdKey,t); return t;})();
+
+    const daySel = document.getElementById('day');
+    const monthSel = document.getElementById('month');
+    const nameInput = document.getElementById('name');
+    const form = document.getElementById('submitForm');
+    const submitBtn = document.getElementById('submitBtn');
+
+    const nCountEl = document.getElementById('nCount');
+    const distinctCountEl = document.getElementById('distinctCount');
+    const pTheoryEl = document.getElementById('pTheory');
+    const pObservedEl = document.getElementById('pObserved');
+    const statusPill = document.getElementById('statusPill');
+
+    const tableBody = document.querySelector('#table tbody');
+
+    // Populate day/month selects
+    for (let d = 1; d <= 31; d++) {
+      const o = document.createElement('option');
+      o.value = String(d).padStart(2, '0');
+      o.textContent = String(d).padStart(2, '0');
+      daySel.appendChild(o);
+    }
+    const months = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+    months.forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = m; monthSel.appendChild(o); });
+
+    // ==== 4) CHART ====
+    const ctx = document.getElementById('bar').getContext('2d');
+    const labels = Array.from({length:12}, (_,i)=> String(i+1).padStart(2,'0'));
+    const barChart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Counts by month', data: new Array(12).fill(0) }] },
+      options: { responsive: true, animation: false, scales: { y: { beginAtZero: true, ticks: { precision:0 } } } }
+    });
+
+    function dmToMonth(dm){ return parseInt(dm.split('/')[1],10); }
+
+    // ==== 5) HELPERS ====
+    function theoreticalAtLeastOneMatch(n, days=365){
+      if (n <= 1) return 0;
+      let pNoMatch = 1;
+      for (let i=0; i<n; i++) pNoMatch *= (days - i)/days;
+      return 1 - pNoMatch;
+    }
+
+    function computeCounts(rows){
+      const counts = new Map();
+      rows.forEach(r => counts.set(r.dm, (counts.get(r.dm)||0) + 1));
+      return counts;
+    }
+
+    function updateUI(rows){
+      const n = rows.length;
+      nCountEl.textContent = n;
+
+      const counts = computeCounts(rows);
+      distinctCountEl.textContent = counts.size;
+
+      // Observed: did we get any duplicate?
+      const anyDup = Array.from(counts.values()).some(c => c > 1);
+      pObservedEl.textContent = anyDup ? 'Yes' : 'No';
+
+      // Theory
+      const p = theoreticalAtLeastOneMatch(n);
+      pTheoryEl.textContent = (p*100).toFixed(1) + '%';
+
+      // Chart by month
+      const monthCounts = new Array(12).fill(0);
+      for (const [dm, c] of counts.entries()) {
+        const m = dmToMonth(dm) - 1; monthCounts[m] += c;
+      }
+      barChart.data.datasets[0].data = monthCounts;
+      barChart.update();
+
+      // Table
+      tableBody.innerHTML = '';
+      rows
+        .sort((a,b)=> new Date(a.created_at) - new Date(b.created_at))
+        .forEach((r, idx) => {
+          const tr = document.createElement('tr');
+          if ((counts.get(r.dm) || 0) > 1) tr.classList.add('dup');
+          tr.innerHTML = `<td>${idx+1}</td><td><b>${r.dm}</b></td><td>${r.nickname?escapeHtml(r.nickname):''}</td><td>${new Date(r.created_at).toLocaleTimeString()}</td><td>${counts.get(r.dm)||1}</td>`;
+          tableBody.appendChild(tr);
+        });
+    }
+
+    function escapeHtml(s){ return s?.replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])) || ''; }
+
+    // ==== 6) LOAD + LIVE SUBSCRIPTION ====
+    async function loadAll(){
+      const { data, error } = await supabase.from('birthdays').select('*');
+      if (error) { statusPill.textContent = 'Error loading'; console.error(error); return; }
+      statusPill.textContent = `Live: ${data.length} rows`;
+      updateUI(data);
+      return data;
+    }
+
+    async function subscribe(){
+      const channel = supabase.channel('birthdays-stream')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'birthdays' }, payload => {
+          // Re-load on any change (simple and safe for small classes)
+          loadAll();
+        })
+        .subscribe(status => { /* optional */ });
+    }
+
+    // ==== 7) SUBMIT HANDLER ====
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      submitBtn.disabled = true;
+      const d = daySel.value;
+      const m = monthSel.value;
+      const nickname = nameInput.value?.trim() || null;
+      const dm = `${d}/${m}`;
+
+      try {
+        const { error } = await supabase.from('birthdays').insert({ dm, nickname, client_id: clientId });
+        if (error) throw error;
+        statusPill.textContent = 'Submitted!';
+        form.reset();
+      } catch (err){
+        console.error(err);
+        alert('Submission failed. Please try again.');
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+
+    // ==== 8) START ====
+    (async function(){
+      const data = await loadAll();
+      await subscribe();
+      statusPill.textContent = 'Connected';
+    })();
+  </script>
+</body>
+</html>
